@@ -5,12 +5,14 @@ Main script for running the EEG-GCNN reproduction experiments.
 import os
 import argparse
 import torch
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from experiments.train import main as train_main
 from experiments.test import main as test_main
 from data.preprocess import main as preprocess_main
 from experiments.config import MODEL_CONFIG, TRAIN_CONFIG, EVAL_CONFIG
+from data.preprocess import compute_connectivity_matrices
 
 
 def parse_args():
@@ -28,6 +30,8 @@ def parse_args():
     
     # Data arguments
     parser.add_argument('--data_dir', type=str, default='data', help='Directory containing the EEG data')
+    parser.add_argument('--tuh_dir', type=str, default=None, help='Directory containing TUH EEG data')
+    parser.add_argument('--lemon_dir', type=str, default=None, help='Directory containing MPI LEMON EEG data')
     parser.add_argument('--precomputed_features', type=str, default=None, 
                         help='Path to precomputed features, ignored if mode is preprocess')
     parser.add_argument('--load_precomputed', action='store_true', 
@@ -37,6 +41,8 @@ def parse_args():
     parser.add_argument('--github_lemon_url', type=str, 
                         default='https://github.com/OpenNeuroDatasets/ds000221',
                         help='URL to the LEMON dataset on GitHub')
+    parser.add_argument('--use_precomputed_eeg_gcnn', action='store_true',
+                        help='Use precomputed EEG-GCNN features')
     
     # Model arguments
     parser.add_argument('--model', type=str, default='shallow', 
@@ -85,29 +91,71 @@ def run_preprocess(args):
     Args:
         args (argparse.Namespace): Command-line arguments.
     """
-    # Preprocess TUH dataset
-    tuh_args = argparse.Namespace(
-        tuh_dir=os.path.join(args.data_dir, 'raw', 'tuh'),
-        lemon_dir=None,
-        output_dir=os.path.join(args.data_dir, 'processed'),
-        fs=250.0,
-        window_size=10.0,
-        use_github_lemon=args.use_github_lemon,
-        github_lemon_url=args.github_lemon_url
-    )
-    preprocess_main(tuh_args)
+    os.makedirs(args.output_dir, exist_ok=True)
     
-    # Preprocess LEMON dataset
-    lemon_args = argparse.Namespace(
-        tuh_dir=None,
-        lemon_dir=os.path.join(args.data_dir, 'raw', 'lemon'),
-        output_dir=os.path.join(args.data_dir, 'processed'),
-        fs=250.0,
-        window_size=10.0,
-        use_github_lemon=args.use_github_lemon,
-        github_lemon_url=args.github_lemon_url
-    )
-    preprocess_main(lemon_args)
+    # If using precomputed EEG-GCNN features
+    if args.use_precomputed_eeg_gcnn:
+        print("\n=== Downloading precomputed EEG-GCNN features ===")
+        from utils.github_downloader import download_eeg_gcnn_precomputed
+        
+        precomputed_dir = os.path.join(args.data_dir, 'processed', 'eeg_gcnn')
+        os.makedirs(precomputed_dir, exist_ok=True)
+
+        if os.path.isdir(precomputed_dir) and os.listdir(precomputed_dir):
+            print(f"Precomputed features already in {precomputed_dir}, skipping download.")
+            return
+        
+        # Download precomputed features
+        success = download_eeg_gcnn_precomputed(precomputed_dir)
+        
+        if success:
+            print(f"Successfully downloaded precomputed EEG-GCNN features to {precomputed_dir}")
+            return
+        else:
+            print("Failed to download precomputed EEG-GCNN features")
+            print("Please check your internet connection or try again later")
+            sys.exit(1)
+            
+        # Create a metadata file to indicate we're using precomputed features
+        with open(os.path.join(precomputed_dir, 'using_precomputed.txt'), 'w') as f:
+            f.write("This directory contains precomputed EEG-GCNN features from FigShare.")
+        
+        print("Precomputed features setup complete.")
+        return
+    
+    # Original preprocessing for TUH dataset
+    if args.tuh_dir is not None:
+        print(f"Processing TUH dataset from {args.tuh_dir}...")
+        tuh_args = argparse.Namespace(
+            tuh_dir=args.tuh_dir,
+            lemon_dir=None,
+            output_dir=args.output_dir,
+            fs=250.0,
+            window_size=10.0,
+            use_github_lemon=False,
+            github_lemon_url=None
+        )
+        preprocess_main(tuh_args)
+    
+    # Original preprocessing for LEMON dataset
+    if args.lemon_dir is not None or args.use_github_lemon:
+        print(f"Processing LEMON dataset...")
+        lemon_args = argparse.Namespace(
+            tuh_dir=None,
+            lemon_dir=args.lemon_dir,
+            output_dir=args.output_dir,
+            fs=250.0,
+            window_size=10.0,
+            use_github_lemon=args.use_github_lemon,
+            github_lemon_url=args.github_lemon_url
+        )
+        preprocess_main(lemon_args)
+    
+    # Compute connectivity matrices if not using precomputed features
+    print("Computing connectivity matrices...")
+    compute_connectivity_matrices(args.output_dir, args.output_dir)
+    
+    print("Preprocessing complete.")
 
 
 def run_train(args):
@@ -123,7 +171,7 @@ def run_train(args):
         precomputed_features=args.precomputed_features,
         load_precomputed=args.load_precomputed,
         model=args.model,
-        sparsity_threshold=args.sparsity_threshold,
+        sparsity_threshold=args.sparsity_threshold if hasattr(args, 'sparsity_threshold') else 0.5,
         batch_size=args.batch_size,
         epochs=args.epochs,
         lr=args.lr,
@@ -131,7 +179,8 @@ def run_train(args):
         patience=args.patience,
         n_folds=args.n_folds,
         save_dir=args.save_dir,
-        seed=args.seed
+        seed=args.seed,
+        use_precomputed_eeg_gcnn=args.use_precomputed_eeg_gcnn
     )
     train_main(train_args)
     
@@ -163,7 +212,8 @@ def run_test(args):
         output_dir=args.output_dir,
         visualize=args.visualize,
         feature_importance=args.feature_importance,
-        seed=args.seed
+        seed=args.seed,
+        use_precomputed_eeg_gcnn=args.use_precomputed_eeg_gcnn if hasattr(args, 'use_precomputed_eeg_gcnn') else False
     )
     test_main(test_args)
     

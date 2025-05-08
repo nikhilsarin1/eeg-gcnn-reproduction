@@ -12,10 +12,10 @@ import argparse
 import glob
 from tqdm import tqdm
 
-# Add the parent directory to the path to import from utils
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.connectivity import get_electrode_positions, compute_spatial_connectivity, compute_functional_connectivity
+from utils.github_downloader import download_eeg_gcnn_precomputed
 
 
 def load_tuh_eeg(file_path):
@@ -319,6 +319,8 @@ def parse_args():
     parser.add_argument('--use_github_lemon', action='store_true', help='Whether to use the LEMON dataset from GitHub')
     parser.add_argument('--github_lemon_url', type=str, default='https://github.com/OpenNeuroDatasets/ds000221', 
                         help='URL to the LEMON dataset on GitHub')
+    parser.add_argument('--use_precomputed_eeg_gcnn', action='store_true', 
+                        help='Download and use precomputed EEG-GCNN features')
     
     return parser.parse_args()
 
@@ -335,6 +337,12 @@ def main(args=None):
     
     # Create output directory if it doesn't exist
     os.makedirs(args.output_dir, exist_ok=True)
+
+    if args.use_precomputed_eeg_gcnn:
+        print("Downloading precomputed EEG-GCNN features...")
+        download_eeg_gcnn_precomputed(args.output_dir)
+        print("Precomputed features downloaded successfully!")
+        return
     
     # If using GitHub LEMON dataset, download it
     if args.use_github_lemon:

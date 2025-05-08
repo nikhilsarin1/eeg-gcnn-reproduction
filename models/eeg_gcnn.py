@@ -10,24 +10,16 @@ from torch_geometric.nn import GCNConv, global_mean_pool
 
 class ShallowEEGGCNN(torch.nn.Module):
     """
-    Shallow variant of the EEG-GCNN model.
+    Shallow variant of the EEG-GCNN model from the paper.
     
     This model consists of:
     - 2 Graph Convolutional layers (output dims: 64, 128)
-    - Global Mean Pooling layer
+    - Batch normalization after each convolution
+    - Global Mean Pooling
     - Output layer
-    
-    Note that this shallow model has no hidden linear layers.
     """
     
     def __init__(self, num_node_features, out_channels=1):
-        """
-        Initialize the shallow EEG-GCNN model.
-        
-        Args:
-            num_node_features (int): Number of input features per node.
-            out_channels (int): Number of output channels. Default is 1 for binary classification.
-        """
         super(ShallowEEGGCNN, self).__init__()
         
         # Graph convolution layers
@@ -42,15 +34,6 @@ class ShallowEEGGCNN(torch.nn.Module):
         self.out = nn.Linear(128, out_channels)
         
     def forward(self, data):
-        """
-        Forward pass of the model.
-        
-        Args:
-            data (torch_geometric.data.Data): Input graph data.
-            
-        Returns:
-            torch.Tensor: Model output.
-        """
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
         
         # First graph convolutional layer
@@ -74,23 +57,17 @@ class ShallowEEGGCNN(torch.nn.Module):
 
 class DeepEEGGCNN(torch.nn.Module):
     """
-    Deep variant of the EEG-GCNN model.
+    Deep variant of the EEG-GCNN model from the paper.
     
     This model consists of:
     - 5 Graph Convolutional layers (output dims: 16, 16, 32, 64, 128)
-    - Global Mean Pooling layer
+    - Batch normalization after each convolution
+    - Global Mean Pooling
     - 2 hidden Linear layers (dims: 30, 20)
     - Output layer
     """
     
     def __init__(self, num_node_features, out_channels=1):
-        """
-        Initialize the deep EEG-GCNN model.
-        
-        Args:
-            num_node_features (int): Number of input features per node.
-            out_channels (int): Number of output channels. Default is 1 for binary classification.
-        """
         super(DeepEEGGCNN, self).__init__()
         
         # Graph convolution layers
@@ -118,15 +95,6 @@ class DeepEEGGCNN(torch.nn.Module):
         self.dropout = nn.Dropout(0.3)
         
     def forward(self, data):
-        """
-        Forward pass of the model.
-        
-        Args:
-            data (torch_geometric.data.Data): Input graph data.
-            
-        Returns:
-            torch.Tensor: Model output.
-        """
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
         
         # First graph convolutional layer

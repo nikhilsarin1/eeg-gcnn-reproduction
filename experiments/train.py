@@ -50,6 +50,8 @@ def parse_args():
     # Output arguments
     parser.add_argument('--save_dir', type=str, default='saved_models', help='Directory to save models')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
+    parser.add_argument('--use_precomputed_eeg_gcnn', action='store_true',
+                       help='Use precomputed EEG-GCNN features')
     
     return parser.parse_args()
 
@@ -307,12 +309,25 @@ def main(args):
     
     # Load dataset
     print(f'Loading dataset...')
-    if args.load_precomputed:
+    if args.use_precomputed_eeg_gcnn:
+        precomputed_path = os.path.join(args.data_dir, 'processed', 'eeg_gcnn')
         dataset = EEGGraphDataset(
             data_dir=args.data_dir,
             load_precomputed=True,
-            precomputed_features_path=args.precomputed_features
+            precomputed_features_path=precomputed_path
         )
+        
+        # Set model directory based on model type
+        if args.model == 'shallow':
+            model_dir = os.path.join(precomputed_path, 'psd_shallow_eeg_gcnn')
+        elif args.model == 'deep':
+            model_dir = os.path.join(precomputed_path, 'psd_deep_eeg_gcnn')
+        elif args.model == 'fcnn':
+            model_dir = os.path.join(precomputed_path, 'psd_fcnn_final_models')
+        elif args.model == 'random_forest':
+            model_dir = os.path.join(precomputed_path, 'psd_random_forest_models')
+        else:
+            model_dir = args.save_dir
     else:
         dataset = EEGGraphDataset(
             data_dir=args.data_dir

@@ -52,6 +52,8 @@ def parse_args():
     parser.add_argument('--visualize', action='store_true', help='Whether to visualize results')
     parser.add_argument('--feature_importance', action='store_true', help='Whether to visualize feature importance')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
+    parser.add_argument('--use_precomputed_eeg_gcnn', action='store_true',
+                       help='Use precomputed EEG-GCNN features')
     
     return parser.parse_args()
 
@@ -70,27 +72,57 @@ def load_dataset_and_models(args):
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     
+    # Check if use_precomputed_eeg_gcnn is set
+    use_precomputed = hasattr(args, 'use_precomputed_eeg_gcnn') and args.use_precomputed_eeg_gcnn
+    
     # Load dataset
     print(f'Loading dataset...')
-    if args.load_precomputed:
+    if use_precomputed:
+        precomputed_path = os.path.join(args.data_dir, 'processed', 'eeg_gcnn')
         dataset = EEGGraphDataset(
             data_dir=args.data_dir,
             load_precomputed=True,
-            precomputed_features_path=args.precomputed_features
+            precomputed_features_path=precomputed_path
         )
+        
+        # Set model directory based on model type
+        if args.model == 'shallow':
+            model_dir = os.path.join(precomputed_path, 'psd_shallow_eeg_gcnn')
+        elif args.model == 'deep':
+            model_dir = os.path.join(precomputed_path, 'psd_deep_eeg_gcnn')
+        elif args.model == 'fcnn':
+            model_dir = os.path.join(precomputed_path, 'psd_fcnn_final_models')
+        elif args.model == 'random_forest':
+            model_dir = os.path.join(precomputed_path, 'psd_random_forest_models')
+        else:
+            model_dir = args.model_dir
     else:
+        # Use your existing dataset loading code
         dataset = EEGGraphDataset(
             data_dir=args.data_dir
         )
+        model_dir = args.model_dir
     
     print(f'Dataset loaded with {len(dataset)} windows')
     
     # Load model states and fold metrics
-    model_states_path = os.path.join(args.model_dir, f'{args.model}_model_states.pt')
-    fold_metrics_path = os.path.join(args.model_dir, f'{args.model}_fold_metrics.pt')
+    model_states_path = os.path.join(model_dir, f'{args.model}_model_states.pt')
+    fold_metrics_path = os.path.join(model_dir, f'{args.model}_fold_metrics.pt')
     
-    model_states = torch.load(model_states_path)
-    fold_metrics = torch.load(fold_metrics_path)
+    # Check if files exist
+    if not os.path.exists(model_states_path):
+        print(f"Model states file not found at {model_states_path}")
+        model_states = {}
+    else:
+        torch.serialization.add_safe_globals(['numpy.core.multiarray.scalar'])
+        model_states = torch.load(model_states_path, weights_only=False)
+    
+    if not os.path.exists(fold_metrics_path):
+        print(f"Fold metrics file not found at {fold_metrics_path}")
+        fold_metrics = {}
+    else:
+        torch.serialization.add_safe_globals(['numpy.core.multiarray.scalar'])
+        fold_metrics = torch.load(fold_metrics_path, weights_only=False)
     
     print(f'Loaded {len(model_states)} trained models')
     

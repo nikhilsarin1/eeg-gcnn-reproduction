@@ -104,6 +104,60 @@ def download_lemon_dataset(output_dir, github_url='https://github.com/OpenNeuroD
         print("You can manually download it from:", github_url)
         return False
 
+def download_eeg_gcnn_precomputed(output_dir):
+    """
+    Download precomputed features for EEG-GCNN reproduction from FigShare.
+    
+    Args:
+        output_dir (str): Directory to save the downloaded files
+        
+    Returns:
+        bool: True if download was successful, False otherwise
+    """
+    import requests
+    import zipfile
+    import os
+    from tqdm import tqdm
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # FigShare direct download link
+    figshare_url = "https://ndownloader.figshare.com/files/37681734"
+    zip_path = os.path.join(output_dir, "eeg_gcnn_precomputed.zip")
+    
+    print(f"Downloading precomputed features from FigShare...")
+    try:
+        # Download with progress bar
+        response = requests.get(figshare_url, stream=True)
+        total_size = int(response.headers.get('content-length', 0))
+        block_size = 1024
+        
+        with open(zip_path, 'wb') as f, tqdm(
+                desc="Downloading",
+                total=total_size,
+                unit='B',
+                unit_scale=True,
+                unit_divisor=1024,
+            ) as pbar:
+            for data in response.iter_content(block_size):
+                f.write(data)
+                pbar.update(len(data))
+        
+        # Extract zip file
+        print(f"Extracting files to {output_dir}...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(output_dir)
+        
+        # Remove zip file after extraction
+        os.remove(zip_path)
+        print(f"Download and extraction complete!")
+        return True
+    
+    except Exception as e:
+        print(f"Error downloading precomputed features: {e}")
+        return False
+
 if __name__ == '__main__':
     # This allows running this script directly to download the dataset
     download_lemon_dataset('data/raw')

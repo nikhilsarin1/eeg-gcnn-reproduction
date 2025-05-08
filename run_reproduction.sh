@@ -14,6 +14,7 @@ TEST=0
 RUN_ABLATIONS=0
 MODEL="shallow"  # Default model
 DOWNLOAD_DATA=0
+USE_PRECOMPUTED_EEG_GCNN=0
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -48,6 +49,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --download-data)
       DOWNLOAD_DATA=1
+      shift
+      ;;
+    --use-precomputed-eeg-gcnn)
+      USE_PRECOMPUTED_EEG_GCNN=1
       shift
       ;;
     --help)
@@ -124,6 +129,13 @@ fi
 # Step 1: Preprocess data
 if [ $PREPROCESS -eq 1 ]; then
   echo "Step 1: Preprocessing data..."
+  # Check if using precomputed EEG-GCNN features
+  if [ $USE_PRECOMPUTED_EEG_GCNN -eq 1 ]; then
+    echo "Using precomputed EEG-GCNN features..."
+    $PYTHON main.py --mode preprocess --use_precomputed_eeg_gcnn
+  else
+    echo "Not using precomputed EEG-GCNN features..."
+  fi
   
   # Check if data is available
   if [ -d "data/raw/tuh" ] && [ "$(ls -A data/raw/tuh)" ]; then
@@ -156,6 +168,14 @@ fi
 # Step 2: Train model
 if [ $TRAIN -eq 1 ]; then
   echo "Step 2: Training model(s)..."
+
+  # Check if using precomputed EEG-GCNN features
+  if [ $USE_PRECOMPUTED_EEG_GCNN -eq 1 ]; then
+    echo "Using precomputed EEG-GCNN features for training..."
+    $PYTHON main.py --mode train --model $MODEL --use_precomputed_eeg_gcnn
+  else
+    echo "Not using precomputed EEG-GCNN features for training..."
+  fi
   
   # Run training
   if [ $RUN_ABLATIONS -eq 1 ]; then
@@ -172,6 +192,13 @@ fi
 # Step 3: Test model
 if [ $TEST -eq 1 ]; then
   echo "Step 3: Testing model(s)..."
+
+  if [ $USE_PRECOMPUTED_EEG_GCNN -eq 1 ]; then
+    echo "Using precomputed EEG-GCNN features for testing..."
+    $PYTHON main.py --mode test --model $MODEL --use_precomputed_eeg_gcnn --visualize --feature_importance
+  else
+    echo "Not using precomputed EEG-GCNN features for testing..."
+  fi
   
   # Run testing
   if [ $RUN_ABLATIONS -eq 1 ]; then
