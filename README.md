@@ -163,8 +163,6 @@ bash run_reproduction.sh --all --use-precomputed-eeg-gcnn
 
 ## Results from Original Paper
 
-Results comparing the EEG-GCNN approach with baselines:
-
 | Model | AUC | Balanced Accuracy | Precision | Recall | F1 |
 |-------|-----|-------------------|-----------|--------|----| 
 | Shallow EEG-GCNN | 0.90 | 0.85 | 0.99 | 0.72 | 0.83 |
@@ -195,7 +193,3 @@ If you use this code in your research, please cite the original paper:
   year={2020}
 }
 ```
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
