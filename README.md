@@ -1,12 +1,35 @@
 # EEG-GCNN: Graph Convolutional Neural Networks for EEG-Based Neurological Disease Diagnosis
 
-This repository contains a reproduction of the paper ["EEG-GCNN: Augmenting Electroencephalogram-based Neurological Disease Diagnosis using a Domain-guided Graph Convolutional Neural Network"](https://arxiv.org/abs/2011.12107) by Wagh and Varatharajah (2020).
+This repository contains a reproduction attempt of the paper ["EEG-GCNN: Augmenting Electroencephalogram-based Neurological Disease Diagnosis using a Domain-guided Graph Convolutional Neural Network"](https://arxiv.org/abs/2011.12107) by Wagh and Varatharajah (2020).
 
 ## Overview
 
 Neurological disorders affect approximately 1 billion people worldwide, with electroencephalography (EEG) serving as a primary diagnostic tool. However, visual identification of abnormalities in EEG suffers from a major limitation: approximately 50% of EEGs from patients with seizures are deemed "normal" based on expert visual review. This low sensitivity creates delays in diagnosis and treatment.
 
 The EEG-GCNN approach demonstrates significant improvement (AUC 0.90) in distinguishing "normal" EEGs of patients with neurological diseases from healthy individuals' EEGs by utilizing a graph-based representation that captures both spatial and functional brain connectivity.
+
+## Reproducibility Challenges
+
+**Note:** Despite multiple attempts, I encountered significant challenges in reproducing the results from the original paper:
+
+1. **Initial Raw Data Approach**: I first attempted to use raw data from both TUH and LEMON datasets to reproduce the results following the paper's methodology. However, this approach failed due to incompatibilities between the datasets and the preprocessing pipeline. I encountered a critical error in the data processing phase where the electrode montage conversion between the different EEG datasets could not be properly aligned.
+
+2. **Precomputed Features Approach**: Following the original paper's GitHub repository instructions, I then tried using the precomputed features approach. This led to a critical pickle error when loading the data:
+
+```
+Traceback (most recent call last):
+File "/Users/nikhilsarin/eeg-gcnn-project/main.py", line 256, in <module> main()
+File "/Users/nikhilsarin/eeg-gcnn-project/main.py", line 246, in main run_train(args)
+File "/Users/nikhilsarin/eeg-gcnn-project/main.py", line 181, in run_train train_main(train_args)
+File "/Users/nikhilsarin/eeg-gcnn-project/experiments/train.py", line 314, in main dataset = EEGGraphDataset(
+File "/Users/nikhilsarin/eeg-gcnn-project/data/dataset.py", line 77, in __init__ self._load_precomputed_features(precomputed_features_path)
+File "/Users/nikhilsarin/eeg-gcnn-project/data/dataset.py", line 107, in _load_precomputed_features self.psd_features = np.load(psd_path, allow_pickle=True)
+pickle.UnpicklingError: Failed to interpret file 'data/processed/eeg_gcnn/psd_features_data_X' as a pickle
+```
+
+3. **Data Format Mismatch**: Even after attempting to fix the pickle error, subsequent data loading issues emerged with shape mismatches between the spatial connectivity matrix (71,71) and the functional connectivity matrix (64,), preventing the successful training of the model.
+
+These challenges highlight the difficulties in reproducing complex deep learning research, particularly in the neurological domain where data preprocessing and handling are especially intricate.
 
 ## Key Contributions of Original Paper
 
@@ -91,6 +114,8 @@ To run the complete reproduction pipeline (preprocessing, training, and testing)
 bash run_reproduction.sh --all
 ```
 
+**Note:** As mentioned in the Reproducibility Challenges section, running this script will likely result in errors due to the issues described above.
+
 ### Step-by-Step Execution
 
 1. **Preprocessing**:
@@ -108,22 +133,12 @@ bash run_reproduction.sh --train --model shallow
 bash run_reproduction.sh --test --model shallow --visualize
 ```
 
-### Ablation Studies
+### Precomputed Features
 
-Run ablation studies to investigate the importance of different connectivity types:
+To use the precomputed features (though this also encounters errors as described above):
 
 ```bash
-# Spatial-only connectivity
-bash run_reproduction.sh --train --model spatial_only
-bash run_reproduction.sh --test --model spatial_only --visualize
-
-# Functional-only connectivity
-bash run_reproduction.sh --train --model functional_only
-bash run_reproduction.sh --test --model functional_only --visualize
-
-# Sparse graph connectivity
-bash run_reproduction.sh --train --model sparse --sparsity_threshold 0.5
-bash run_reproduction.sh --test --model sparse --visualize
+bash run_reproduction.sh --all --use-precomputed-eeg-gcnn
 ```
 
 ## Implementation Details
@@ -146,7 +161,7 @@ bash run_reproduction.sh --test --model sparse --visualize
 - **Early Stopping**: Patience of 10 epochs based on validation AUC
 - **Class Imbalance**: Weighted loss function based on class distribution
 
-## Results
+## Results from Original Paper
 
 Results comparing the EEG-GCNN approach with baselines:
 
