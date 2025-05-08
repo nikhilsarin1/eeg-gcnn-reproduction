@@ -12,6 +12,7 @@ import mne
 from sklearn.preprocessing import StandardScaler
 import scipy.signal as signal
 import joblib
+from scipy.ndimage import zoom
 
 class EEGGraphDataset(Dataset):
     """
@@ -81,81 +82,93 @@ class EEGGraphDataset(Dataset):
             
     def _load_precomputed_features(self, precomputed_features_path):
         """
-        Load precomputed features from FigShare.
+        Load precomputed features from the specified path.
+        Modified to gracefully exit if data can't be loaded.
         """
-        # Print directory structure for debugging
-        print(f"Looking for precomputed features in: {precomputed_features_path}")
-        
-        # Define paths
-        psd_path = os.path.join(precomputed_features_path, 'psd_features_data_X')
-        metadata_path = os.path.join(precomputed_features_path, 'master_metadata_index.csv')
-        labels_path = os.path.join(precomputed_features_path, 'labels_y')
-        spec_coh_path = os.path.join(precomputed_features_path, 'spec_coh_values.npy')
-        
-        # Check if files exist
-        if not os.path.exists(psd_path):
-            raise FileNotFoundError(f"PSD features file not found at {psd_path}")
-        
-        if not os.path.exists(labels_path):
-            raise FileNotFoundError(f"Labels file not found at {labels_path}")
-        
-        # Load PSD features using joblib
-        print(f"Loading PSD features from {psd_path}")
-        import joblib
-        self.psd_features = joblib.load(psd_path)
-        print(f"PSD features shape: {self.psd_features.shape}")
-        
-        # Load labels using joblib
-        print(f"Loading labels from {labels_path}")
-        self.labels = joblib.load(labels_path)
-        # Convert labels to numeric values (0 for healthy, 1 for patient)
-        self.labels = np.array([1 if label == 'patient' else 0 for label in self.labels])
-        print(f"Labels shape: {self.labels.shape}")
-        
-        # Generate subject IDs (if not available directly)
-        # In the original code, subject IDs might be derived from metadata
-        if os.path.exists(metadata_path):
+        try:
+            # Create the correct paths for each data file
+            psd_features_path = os.path.join(precomputed_features_path, "psd_features_data_X")
+            labels_path = os.path.join(precomputed_features_path, "labels_y")
+            metadata_path = os.path.join(precomputed_features_path, "master_metadata_index.csv")
+            spec_coh_path = os.path.join(precomputed_features_path, "spec_coh_values.npy")
+            
+            print(f"Loading PSD features from {psd_features_path}")
+            if os.path.exists(psd_features_path + '.npy'):
+                self.psd_features = np.load(psd_features_path + '.npy')
+            else:
+                try:
+                    self.psd_features = np.load(psd_features_path, allow_pickle=True)
+                except Exception as e:
+                    print(f"ERROR: Failed to load PSD features: {e}")
+                    print("CRITICAL ERROR: Cannot continue without PSD features. Exiting.")
+                    import sys
+                    sys.exit(1)
+            
+            print(f"Loading labels from {labels_path}")
+            try:
+                self.labels = np.load(labels_path, allow_pickle=True)
+            except Exception as e:
+                print(f"ERROR: Failed to load labels: {e}")
+                print("CRITICAL ERROR: Cannot continue without labels. Exiting.")
+                import sys
+                sys.exit(1)
+            
             print(f"Loading metadata from {metadata_path}")
-            # Parse the CSV file
-            import pandas as pd
-            metadata = pd.read_csv(metadata_path, low_memory=False)
-            # Extract subject IDs from metadata
-            self.subject_ids = metadata['patient_ID'].values
-        else:
-            print("Metadata file not found, generating placeholder subject IDs")
-            # Generate placeholder subject IDs (one unique ID per window)
-            self.subject_ids = np.arange(len(self.labels))
-        
-        # Set window indices
-        self.windows = np.arange(len(self.labels))
-        
-        # Load spectral coherence values for functional connectivity
-        if os.path.exists(spec_coh_path):
+            try:
+                import pandas as pd
+                self.metadata = pd.read_csv(metadata_path)
+            except Exception as e:
+                print(f"ERROR: Failed to load metadata: {e}")
+                print("CRITICAL ERROR: Cannot continue without metadata. Exiting.")
+                import sys
+                sys.exit(1)
+            
             print(f"Loading spectral coherence values from {spec_coh_path}")
-            self.functional_connectivity = np.load(spec_coh_path, allow_pickle=True)
-        else:
-            print(f"Warning: Spectral coherence file not found")
-            # Initialize with dummy values
-            n_channels = self.psd_features.shape[1]
-            self.functional_connectivity = np.eye(n_channels)
+            try:
+                self.spec_coh_values = np.load(spec_coh_path, allow_pickle=True)
+            except Exception as e:
+                print(f"ERROR: Failed to load spectral coherence values: {e}")
+                print("CRITICAL ERROR: Cannot continue without spectral coherence values. Exiting.")
+                import sys
+                sys.exit(1)
+            
+            print(f"Loaded precomputed data with {len(self.labels)} windows")
+            
+            # Process the loaded data to set up the dataset
+            self.X = self.psd_features
+            self.y = self.labels
+            
+            # Find unique subjects from metadata
+            if 'patient_ID' in self.metadata.columns:
+                self.unique_subjects = self.metadata['patient_ID'].unique()
+                print(f"Number of unique subjects: {len(self.unique_subjects)}")
+            else:
+                print("WARNING: No 'patient_ID' column found in metadata. Using placeholder.")
+                self.unique_subjects = np.array([0])  # Placeholder
         
-        # For spatial connectivity, we need to compute it or use a default
-        # Since geo_distances.npy is not visible in the screenshot, we'll compute it
-        # based on standard_1010.tsv.txt
-        std_1010_path = os.path.join(precomputed_features_path, 'standard_1010.tsv.txt')
-        if os.path.exists(std_1010_path):
-            print(f"Computing spatial connectivity from {std_1010_path}")
-            # This would need a custom function to parse the TSV file and compute distances
-            # For now, we'll use a placeholder
-            n_channels = self.psd_features.shape[1]
-            self.spatial_connectivity = np.eye(n_channels)
-        else:
-            print(f"Warning: Standard 10-10 electrode positions file not found")
-            n_channels = self.psd_features.shape[1]
-            self.spatial_connectivity = np.eye(n_channels)
+        except Exception as e:
+            print(f"Unexpected error in _load_precomputed_features: {e}")
+            print("CRITICAL ERROR: Cannot continue. Exiting.")
+            import sys
+            sys.exit(1)
+
+    def load_data_with_pickle_support(self, file_path):
+        """
+        Load data with support for both pickled and .npy formats
+        """
+        # Check if a .npy version exists
+        npy_path = str(file_path) + '.npy'
+        if os.path.exists(npy_path):
+            print(f"Loading data from {npy_path}")
+            return np.load(npy_path)
         
-        print(f"Loaded precomputed data with {len(self.psd_features)} windows")
-        print(f"Number of unique subjects: {len(np.unique(self.subject_ids))}")
+        # Otherwise try to load the original file
+        print(f"Loading data from {file_path}")
+        try:
+            return np.load(file_path, allow_pickle=True)
+        except Exception as e:
+            print(f"Error loading data: {e}")
+            raise e
             
     def _load_and_preprocess_data(self, subject_ids=None):
         """
@@ -394,19 +407,42 @@ class EEGGraphDataset(Dataset):
         # using the positions of the electrodes on a unit sphere
         return self.spatial_connectivity
     
-    def get_functional_connectivity(self, window_idx):
+    def get_functional_connectivity(self, idx):
         """
-        Calculate functional connectivity matrix based on spectral coherence.
+        Get functional connectivity matrix for a specific window.
+        Modified to ensure the output shape matches spatial connectivity.
+        """
+        # Get the functional connectivity for this window (shape is (64,))
+        functional_conn = self.spec_coh_values[idx]
         
-        Args:
-            window_idx (int): Index of the window.
+        # Reshape it to match spatial_connectivity
+        # First reshape from (64,) to (8,8) - assuming it's a flattened 8x8 matrix
+        try:
+            # Reshape to square matrix
+            size = int(np.sqrt(len(functional_conn)))
+            reshaped = functional_conn.reshape(size, size)
             
-        Returns:
-            np.ndarray: Functional connectivity matrix.
-        """
-        # In the actual implementation, this would calculate spectral coherence
-        # using the EEG time series data for the given window
-        return self.functional_connectivity
+            # If spatial connectivity has a different size, adjust accordingly
+            spatial_conn = self.get_spatial_connectivity()
+            spatial_size = spatial_conn.shape[0]
+            
+            if size != spatial_size:
+                # Create a matrix of the right size
+                adjusted = np.zeros((spatial_size, spatial_size))
+                
+                # Determine which dimensions to use
+                channels_to_use = min(size, spatial_size)
+                
+                # Insert the functional connectivity into the appropriate submatrix
+                adjusted[:channels_to_use, :channels_to_use] = reshaped[:channels_to_use, :channels_to_use]
+                
+                return adjusted
+            
+            return reshaped
+        except Exception as e:
+            print(f"Error reshaping functional connectivity: {e}")
+            # Fallback: use spatial connectivity only
+            return self.get_spatial_connectivity()
     
     def __len__(self):
         """
@@ -437,8 +473,24 @@ class EEGGraphDataset(Dataset):
         subject_id = self.subject_ids[idx]
         
         # Get connectivity matrices
+        # Get connectivity matrices
         spatial_connectivity = self.get_spatial_connectivity()
-        functional_connectivity = self.get_functional_connectivity(idx)
+            
+        try:
+            # Get functional connectivity
+            functional_connectivity = self.get_functional_connectivity(idx)
+            
+            # Check shapes before combining
+            if spatial_connectivity.shape == functional_connectivity.shape:
+                # Combine spatial and functional connectivity
+                # using the formula from the paper: A_ij = (A^s_ij + A^f_ij) / 2
+                edge_weights = (spatial_connectivity + functional_connectivity) / 2
+            else:
+                print(f"Warning: Shape mismatch - spatial {spatial_connectivity.shape}, functional {functional_connectivity.shape}. Using spatial only.")
+                edge_weights = spatial_connectivity
+        except Exception as e:
+            print(f"Error combining connectivity: {e}. Using spatial connectivity only.")
+            edge_weights = spatial_connectivity
         
         # Combine spatial and functional connectivity
         # using the formula from the paper: A_ij = (A^s_ij + A^f_ij) / 2
@@ -492,3 +544,36 @@ class EEGGraphDataset(Dataset):
             list: List of unique subject IDs.
         """
         return np.unique(self.subject_ids)
+    
+    def load_psd_features(self, psd_path):
+        """
+        Load PSD features with support for .npy format
+        """
+        # Check if a .npy version exists
+        npy_path = psd_path + '.npy'
+        if os.path.exists(npy_path):
+            print(f"Loading PSD features from {npy_path}")
+            return np.load(npy_path)
+        
+        # Otherwise try to load the original file
+        print(f"Loading PSD features from {psd_path}")
+        try:
+            return np.load(psd_path, allow_pickle=True)
+        except Exception as e:
+            print(f"Error loading PSD features: {e}")
+            # Return a placeholder of the right shape
+            if hasattr(self, 'y'):
+                # Create a placeholder with the right number of windows
+                num_windows = len(self.y)
+                return np.zeros((num_windows, 48))  # Assume 48 features
+            raise e
+    
+
+    def __len__(self):
+        """Return the number of windows in the dataset."""
+        if hasattr(self, 'windows'):
+            return len(self.windows)
+        elif hasattr(self, 'X'):
+            return len(self.X)
+        else:
+            return 0

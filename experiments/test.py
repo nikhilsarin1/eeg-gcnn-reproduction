@@ -129,49 +129,36 @@ def load_dataset_and_models(args):
     return dataset, model_states, fold_metrics
 
 
-def evaluate_on_test_set(dataset, model_states, args):
+def evaluate_on_test_set(models, dataset, test_subjects, test_windows, args):
     """
-    Evaluate trained models on the test set.
-    
-    Args:
-        dataset (EEGGraphDataset): Dataset.
-        model_states (dict): Dictionary of model state dicts for each fold.
-        args (argparse.Namespace): Command-line arguments.
+    Evaluate the models on the test set.
+    Modified to handle cases with no trained models.
+    """
+    # Check if we have any models to evaluate
+    if len(models) == 0:
+        print("WARNING: No trained models found. Cannot perform evaluation.")
         
-    Returns:
-        tuple: Dictionary of test metrics for each fold and average metrics.
-    """
-    # Get unique subject IDs
-    unique_subjects = dataset.get_unique_subjects()
+        # Return empty results
+        test_metrics = {}
+        avg_metrics = {}
+        std_metrics = {}
+        avg_subject_preds = []
+        avg_subject_targets = []
+        
+        return test_metrics, avg_metrics, std_metrics, avg_subject_preds, avg_subject_targets
     
-    # Set random seed for reproducibility
-    np.random.seed(args.seed)
-    
-    # Shuffle subjects
-    np.random.shuffle(unique_subjects)
-    
-    # Split subjects into train and test
-    test_size = int(len(unique_subjects) * args.test_split)
-    test_subjects = unique_subjects[:test_size]
-    
-    print(f'Using {len(test_subjects)} subjects for testing')
-    
-    # Get window indices for test subjects
-    test_windows = []
-    for subject_id in test_subjects:
-        test_windows.extend(dataset.get_subject_windows(subject_id))
-    
-    print(f'Using {len(test_windows)} windows for testing')
-    
-    # Create test data loader
-    test_loader = DataLoader([dataset[i] for i in test_windows], batch_size=64, shuffle=False)
-    
-    # Initialize dictionary to store test metrics for each fold
-    test_metrics = {}
-    
-    # Initialize arrays to store subject-level predictions and targets for each fold
-    all_subject_preds = []
-    all_subject_targets = []
+    # If test_windows is empty, handle this case
+    if len(test_windows) == 0:
+        print("WARNING: No test windows found. Cannot perform evaluation.")
+        
+        # Return empty results
+        test_metrics = {}
+        avg_metrics = {}
+        std_metrics = {}
+        avg_subject_preds = []
+        avg_subject_targets = []
+        
+        return test_metrics, avg_metrics, std_metrics, avg_subject_preds, avg_subject_targets
     
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

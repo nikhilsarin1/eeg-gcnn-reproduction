@@ -207,20 +207,23 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, args):
 
 def cross_validation(dataset, args):
     """
-    Perform k-fold cross-validation.
-    
-    Args:
-        dataset (EEGGraphDataset): Dataset to use for cross-validation.
-        args (argparse.Namespace): Command-line arguments.
-        
-    Returns:
-        tuple: Dictionary of model state dicts and dictionary of metrics for each fold.
+    Perform k-fold cross-validation on the dataset.
     """
-    # Get unique subject IDs
-    unique_subjects = dataset.get_unique_subjects()
+    # Check if n_splits is not defined in args and set a default value
+    if not hasattr(args, 'n_splits'):
+        # Set a default of 10 splits for cross-validation
+        args.n_splits = 10
+        print(f"Using default number of splits: {args.n_splits}")
     
-    # Set random seed for reproducibility
-    np.random.seed(args.seed)
+    # Get unique subjects
+    unique_subjects = dataset.get_unique_subjects()
+    print(f"Number of unique subjects: {len(unique_subjects)}")
+    
+    # Check if we have enough subjects for k-fold cross-validation
+    if len(unique_subjects) < args.n_splits:
+        print(f"WARNING: Not enough subjects ({len(unique_subjects)}) for {args.n_splits}-fold cross-validation.")
+        print(f"Reducing number of folds to {max(2, len(unique_subjects) // 2)}")
+        args.n_splits = max(2, len(unique_subjects) // 2)
     
     # Create k-fold cross-validation
     kf = KFold(n_splits=args.n_folds, shuffle=True, random_state=args.seed)
